@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "net_mujoco"
+version = "0.0.1"
+requires-python = ">=3.9"
+dependencies = [
+  "mujoco",
+  "python-xlib",
+  "typer",
+]
+
+[project.scripts]
+net-mujoco-server = "net_mujoco.server:app"
+
+[tool.setuptools]
+packages = ["net_mujoco"]
