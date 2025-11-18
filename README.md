@@ -1,49 +1,100 @@
-# A simple tool to view your mujoco viewer through the web browser
+# Net MuJoCo
 
-This drastically simplifies development on clusters or remote dev servers.
+A simple tool to view your MuJoCo simulations through a web browser.
 
-# How does it work?
-net_mujoco opens a virtual X display on your machine (by defaul :100). We then use xpra to mirror this display through html5 to a port on localhost.
+This drastically simplifies development on clusters or remote dev servers by providing browser-based visualization without requiring local X11 forwarding.
 
-**Important**: The Display is not password protected! Everyone with access to your machine could access the same screen at this instance!
+## How Does It Work?
 
-# Installation: 
+Net MuJoCo opens a virtual X display on your machine (by default `:100`). It then uses Xpra to mirror this display through HTML5 to a port on localhost, making it accessible via your web browser.
 
-1. Make sure, xpra is installed on your system. If not available, install like so:
+**⚠️ Security Note**: The display is not password protected! Anyone with access to your machine can view the same screen.
+
+## Installation
+
+### 1. Install Xpra
+
+Make sure Xpra is installed on your system:
 
 ```bash
+# Using Xpra installer script
 curl https://xpra.org/get-xpra.sh | bash
+
+# Or via package manager (Ubuntu/Debian)
+sudo apt-get install xpra
 ```
 
-2. Install the project and its dependencies
+### 2. Install Net MuJoCo
+
 ```bash
 pip install -e .
 ```
 
+## Usage
 
-# Usage: 
-1. On your remote machine, start the preconfigured Xpra server:
-```bash
-python -m net_mujoco.viewer
-```
+### Quick Start
 
-2. On another terminal, execute the net mujoco example:
-```bash
+1. **Start the Xpra server** (in one terminal):
 
-python -m net_mujoco.net_mujoco
-```
+   ```bash
+   python -m net_mujoco.server
+   ```
 
-3. In your python code:
-Replace the line where you would call:
+2. **Run your MuJoCo simulation** (in another terminal):
+
+   ```bash
+   python -m net_mujoco.net_mujoco
+   ```
+
+3. **Open your browser** - The viewer will automatically open at `http://localhost:8080`
+
+### In Your Code
+
+Replace the standard MuJoCo viewer:
+
 ```python
-with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
-    ...
+# Before
+with mujoco.viewer.launch_passive(model, data) as viewer:
+    while viewer.is_running():
+        mujoco.mj_step(model, data)
+        viewer.sync()
 ```
 
-with :
+With Net MuJoCo:
+
 ```python
+# After
 from net_mujoco import NetMujocoViewer
 
-with NetMujocoViewer(model, data, display) as viewer:
-    time.sleep(10)  # Keep the viewer open for 10 seconds
+with NetMujocoViewer(model, data, display=":100") as viewer:
+    while viewer.is_running():
+        mujoco.mj_step(model, data)
+        viewer.sync()
 ```
+
+### CLI Options
+
+The server supports various configuration options:
+
+```bash
+# Custom port
+python -m net_mujoco.server --port 9000
+
+# Verbose output
+python -m net_mujoco.server --verbose
+
+# Show all options
+python -m net_mujoco.server --help
+```
+
+## Features
+
+- 🌐 Browser-based MuJoCo visualization
+- 🖥️ Full-screen support
+- 🔧 Easy-to-use context manager API
+- 🚀 Configurable quality and performance settings
+- 📡 Works seamlessly with VS Code Remote SSH
+
+## License
+
+MIT
