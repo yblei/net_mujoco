@@ -40,7 +40,7 @@ class NetMujocoViewer:
             text=True,
         )
         if "No xpra sessions" in result.stdout:
-            raise RuntimeError("Xpra server is not running.")
+            raise RuntimeError("Xpra server is not running. Start with python -m net_mujoco.server")
 
         self.display_backup = os.environ.get("DISPLAY")
         os.environ["DISPLAY"] = ":100"
