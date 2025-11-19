@@ -8,7 +8,7 @@ mujoco.viewer.launch_passive. Physics runs in Python, visualization in browser.
 
 import time
 import mujoco
-from net_mujoco.net_mujoco import launch_passive
+from net_mujoco import launch_passive
 import numpy as np
 
 

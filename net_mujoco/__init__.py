@@ -1,0 +1,1 @@
+from net_mujoco.net_mujoco import launch_passive

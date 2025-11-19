@@ -1,100 +1,77 @@
 # Net MuJoCo
 
-A simple tool to view your MuJoCo simulations through a web browser.
+A web-based visualization tool for MuJoCo physics simulations. View and control your MuJoCo models remotely through a **browser**, perfect for SSH sessions or remote development. Check **jupyter_demo.ipynb** for how to view mujoco from jupyter notebook.
 
-This drastically simplifies development on clusters or remote dev servers by providing browser-based visualization without requiring local X11 forwarding.
+<p align="center">
+  <img src="./image-1.png" href>
+</p>
 
-## How Does It Work?
+## Quick Start
 
-Net MuJoCo opens a virtual X display on your machine (by default `:100`). It then uses Xpra to mirror this display through HTML5 to a port on localhost, making it accessible via your web browser.
-
-**⚠️ Security Note**: The display is not password protected! Anyone with access to your machine can view the same screen.
-
-## Installation
-
-### 1. Install Xpra
-
-Make sure Xpra is installed on your system:
-
+### 1. In your venv, install this project:
 ```bash
-# Using Xpra installer script
-curl https://xpra.org/get-xpra.sh | bash
-
-# Or via package manager (Ubuntu/Debian)
-sudo apt-get install xpra
+pip install git+https://github.com/yblei/net_mujoco.git
 ```
 
-### 2. Install Net MuJoCo
 
-```bash
-pip install -e .
-```
+### [2. Open the Web View Here](https://zalo.github.io/mujoco_wasm/)
 
-## Usage
+### 3. Intagrate into your code
 
-### Quick Start
-
-1. **Start the Xpra server** (in one terminal):
-
-   ```bash
-   python -m net_mujoco.server
-   ```
-
-2. **Run your MuJoCo simulation** (in another terminal):
-
-   ```bash
-   python -m net_mujoco.net_mujoco
-   ```
-
-3. **Open your browser** - The viewer will automatically open at `http://localhost:8080`
-
-### In Your Code
-
-Replace the standard MuJoCo viewer:
+Replace your standard MuJoCo passive viewer with the network viewer:
 
 ```python
-# Before
-with mujoco.viewer.launch_passive(model, data) as viewer:
-    while viewer.is_running():
+import mujoco
+from net_mujoco import launch_passive
+
+# Load your model
+full_path = "path/to/your/model.xml"
+model = mujoco.MjModel.from_xml_path(full_path)
+data = mujoco.MjData(model)
+
+# Launch the network viewer (opens browser automatically)
+with launch_passive(m, d, model_path=full_path) as viewer:
+    # Your simulation loop
+    while True:
         mujoco.mj_step(model, data)
         viewer.sync()
 ```
 
-With Net MuJoCo:
+## How It Works
 
-```python
-# After
-from net_mujoco import NetMujocoViewer
+1. **Python side**: `launch_passive()` starts a WebSocket server and sends your model to the browser.
+2. **Browser side**: MuJoCo WASM loads and renders the model using Three.js
+3. **Real-time sync**: Simulation state updates stream from Python to browser
 
-with NetMujocoViewer(model, data, display=":100") as viewer:
-    while viewer.is_running():
-        mujoco.mj_step(model, data)
-        viewer.sync()
-```
+## Development
 
-### CLI Options
-
-The server supports various configuration options:
+### Local Testing
 
 ```bash
-# Custom port
-python -m net_mujoco.server --port 9000
+# Start local HTTP server
+cd mujoco_wasm
+python -m http.server
 
-# Verbose output
-python -m net_mujoco.server --verbose
-
-# Show all options
-python -m net_mujoco.server --help
+# In another terminal, run your simulation
+python launch_passive_demo.py
 ```
 
-## Features
+### Building
 
-- 🌐 Browser-based MuJoCo visualization
-- 🖥️ Full-screen support
-- 🔧 Easy-to-use context manager API
-- 🚀 Configurable quality and performance settings
-- 📡 Works seamlessly with VS Code Remote SSH
+The project uses esbuild to bundle JavaScript dependencies:
+
+```bash
+cd mujoco_wasm
+npm install
+npm run build
+```
+
 
 ## License
 
-MIT
+This project uses MuJoCo WASM which is licensed under the Apache License 2.0.
+
+## Acknowledgments
+
+- Built on [MuJoCo](https://mujoco.org/) physics engine
+- Based on the official [MuJoCo WASM](https://github.com/zalo/mujoco_wasm)
