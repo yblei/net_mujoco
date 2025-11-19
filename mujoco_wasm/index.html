@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>MuJoCo Demo</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+        <meta name="application-name"   content="mujoco_wasm">
+        <meta name="description"        content="MuJoCo Testbed">
+        <meta name="keywords"           content="MuJoCo">
+        <meta name="author"             content="zalo">
+        <meta name="viewport"           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no, shrink-to-fit=0">
+        <meta name="theme-color"        content="#ffffff">
+        <link rel ="icon" type="image/x-icon" href="./assets/favicon.png">
+    </head>
+
+    <body style="margin:0px; background-color:rgb(255, 255, 255); overflow:hidden; position:fixed; min-height: 100%;
+                 touch-action: none;
+                 -webkit-touch-callout: none; /* iOS Safari */
+                 -webkit-user-select: none; /* Safari */
+                 -khtml-user-select: none; /* Konqueror HTML */
+                 -moz-user-select: none; /* Old versions of Firefox */
+                 -ms-user-select: none; /* Internet Explorer/Edge */
+                 user-select: none; /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */">
+        <h1 hidden></h1> <!-- Puts the Lighthouse Score over 90 heheh-->
+
+		<!-- Import maps polyfill -->
+		<script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+        <!-- JSZip for extracting zip files -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+        <!-- Allows three.js Examples to work without building -->
+        <script type="importmap">
+            { "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/"} }
+        </script>
+
+        <!-- WebSocket client for receiving models from Python -->
+        <script type="module">
+            let ws = null;
+            let reconnectInterval = 3000;
+            let isConnecting = false;
+
+            function connectWebSocket() {
+                if (isConnecting) return;
+                isConnecting = true;
+
+                console.log('Connecting to WebSocket server...');
+                
+                ws = new WebSocket('ws://localhost:9000');
+                
+                ws.onopen = () => {
+                    console.log('✓ Connected to Python WebSocket server');
+                    isConnecting = false;
+                    const status = document.getElementById('ws-status');
+                    if (status) {
+                        status.textContent = '🟢 Connected to Python';
+                        status.style.color = '#4CAF50';
+                    }
+                };
+                
+                ws.onmessage = async (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'load_model') {
+                        console.log(`Received model: ${data.filename}`);
+                        await window.loadModelFromPython(data.filename, data.xml_content);
+                        ws.send(JSON.stringify({ type: 'loaded' }));
+                    } else if (data.type === 'model_zip') {
+                        console.log('Received model zip package');
+                        await window.loadModelFromZip(data.zip_data);
+                        ws.send(JSON.stringify({ type: 'loaded' }));
+                    } else if (data.type === 'state_update') {
+                        // Update the simulation state from Python
+                        if (window.mujocoDemo && window.mujoco && data.qpos) {
+                            const demo = window.mujocoDemo;
+                            if (demo.data && demo.model) {
+                                // Update qpos directly (get size from model, not data)
+                                const nq = demo.model.nq;
+                                for (let i = 0; i < data.qpos.length && i < nq; i++) {
+                                    demo.data.qpos[i] = data.qpos[i];
+                                }
+                                // Update qvel if provided
+                                if (data.qvel) {
+                                    const nv = demo.model.nv;
+                                    for (let i = 0; i < data.qvel.length && i < nv; i++) {
+                                        demo.data.qvel[i] = data.qvel[i];
+                                    }
+                                }
+                                // Forward kinematics to update positions
+                                window.mujoco.mj_forward(demo.model, demo.data);
+                            }
+                        }
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    isConnecting = false;
+                };
+                
+                ws.onclose = () => {
+                    console.log('✗ Disconnected from Python WebSocket server');
+                    isConnecting = false;
+                    
+                    const status = document.getElementById('ws-status');
+                    if (status) {
+                        status.textContent = '🔴 Waiting for Python...';
+                        status.style.color = '#f44336';
+                    }
+                    
+                    setTimeout(connectWebSocket, reconnectInterval);
+                };
+            }
+
+            window.loadModelFromZip = async function(zipBase64) {
+                if (!window.mujocoDemo || !window.mujoco) {
+                    console.log('Waiting for MuJoCo to initialize...');
+                    setTimeout(() => window.loadModelFromZip(zipBase64), 500);
+                    return;
+                }
+
+                try {
+                    const demo = window.mujocoDemo;
+                    const mujoco = window.mujoco;
+
+                    console.log('Decoding zip package...');
+                    const binaryString = atob(zipBase64);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+
+                    console.log('Extracting zip contents...');
+                    const zip = await JSZip.loadAsync(bytes);
+                    
+                    try {
+                        mujoco.FS.mkdir('/working');
+                    } catch (e) {
+                        // Directory may already exist
+                    }
+
+                    let xmlFilename = null;
+                    let fileCount = 0;
+                    for (const [filename, file] of Object.entries(zip.files)) {
+                        if (!file.dir) {
+                            const content = await file.async('uint8array');
+                            mujoco.FS.writeFile(`/working/${filename}`, content);
+                            fileCount++;
+                            
+                            if (filename.endsWith('.xml')) {
+                                xmlFilename = filename;
+                            }
+                            console.log(`  ✓ Extracted: ${filename}`);
+                        }
+                    }
+                    console.log(`Extracted ${fileCount} files to VFS`);
+
+                    if (!xmlFilename) {
+                        throw new Error('No XML file found in zip package');
+                    }
+
+                    const oldRoot = demo.scene.getObjectByName("MuJoCo Root");
+                    if (oldRoot) {
+                        demo.scene.remove(oldRoot);
+                    }
+
+                    const { loadSceneFromURL } = await import('./src/mujocoUtils.js');
+                    [demo.model, demo.data, demo.bodies, demo.lights] = 
+                        await loadSceneFromURL(mujoco, xmlFilename, demo);
+
+                    mujoco.mj_forward(demo.model, demo.data);
+
+                    // CRITICAL: Pause BEFORE setting up GUI to prevent animation loop from starting
+                    demo.params.paused = true;
+                    console.log('⏸ Paused local simulation - Python will control state');
+
+                    // Now update GUI callbacks to setup controllers
+                    for (let i = 0; i < demo.updateGUICallbacks.length; i++) {
+                        demo.updateGUICallbacks[i](demo.model, demo.data, demo.params);
+                    }
+
+                    // Show indicator that Python is controlling
+                    const pausedText = document.createElement('div');
+                    pausedText.id = 'python-controlled-pause';
+                    pausedText.style.position = 'absolute';
+                    pausedText.style.top = '10px';
+                    pausedText.style.left = '10px';
+                    pausedText.style.color = 'yellow';
+                    pausedText.style.font = 'bold 18px Arial';
+                    pausedText.style.textShadow = '2px 2px 4px black';
+                    pausedText.innerHTML = '⚡ PYTHON CONTROLLED';
+                    pausedText.style.zIndex = '10000';
+                    demo.container.appendChild(pausedText);
+
+                    console.log(`✓ Loaded model: ${xmlFilename} with ${fileCount-1} mesh files`);
+                } catch (error) {
+                    console.error('Error loading model from zip:', error);
+                }
+            };
+
+            window.addEventListener('DOMContentLoaded', () => {
+                const statusDiv = document.createElement('div');
+                statusDiv.id = 'ws-status';
+                statusDiv.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    padding: 10px 15px;
+                    background: rgba(255, 255, 255, 0.9);
+                    border-radius: 5px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    font-family: monospace;
+                    font-size: 12px;
+                    z-index: 10000;
+                `;
+                statusDiv.textContent = '🔴 Connecting to Python...';
+                document.body.appendChild(statusDiv);
+            });
+
+            window.addEventListener('load', () => {
+                connectWebSocket();
+            });
+        </script>
+
+        <div id="appbody" style="position: absolute;">
+            <!--<div id="error"></div>
+            <script type="module" src="./src/Debug.js"></script>-->
+            <script type="module" src="./src/main.js"></script>
+        </div>
+    </body>
+</html>
