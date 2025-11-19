@@ -43,7 +43,7 @@ def main():
     
     # Launch passive viewer (similar to mujoco.viewer.launch_passive)
     # Pass full_path so we can find mesh files in the same directory
-    with launch_passive(m, d, model_path=full_path) as viewer:
+    with launch_passive(m, d, model_path=full_path, open_browser=True) as viewer:
         start_time = time.time()
         step_count = 0
         

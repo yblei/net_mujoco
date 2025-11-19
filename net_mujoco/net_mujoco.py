@@ -370,7 +370,8 @@ class PassiveWebViewer:
 def launch_passive(model: mujoco.MjModel,
                    data: mujoco.MjData,
                    model_path: str = None,
-                   start_servers: bool = True) -> PassiveWebViewer:
+                   start_servers: bool = True,
+                   open_browser: bool = True) -> PassiveWebViewer:
     """
     Launch a passive web viewer for MuJoCo.
 
@@ -384,6 +385,7 @@ def launch_passive(model: mujoco.MjModel,
         model_path: Original XML file path (for models with mesh assets)
         start_servers: If True (default), auto-starts servers. Set False
                       if you're running external websocket_server.py
+        open_browser: If True (default), opens the web viewer in the default browser
 
     Returns:
         PassiveWebViewer instance that can be used as a context manager
@@ -405,4 +407,7 @@ def launch_passive(model: mujoco.MjModel,
         model_path=model_path,
         start_servers=start_servers
     )
+    if open_browser:
+        import webbrowser
+        webbrowser.open("http://yblei.github.io/net_mujoco/")
     return viewer
