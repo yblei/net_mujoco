@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""
+Example: MuJoCo Web Viewer with launch_passive interface
+
+This demonstrates how to use the web viewer with an interface similar to
+mujoco.viewer.launch_passive. Physics runs in Python, visualization in browser.
+"""
+
+import time
+import mujoco
+from net_mujoco.net_mujoco import launch_passive
+import numpy as np
+
+
+def main():
+    # Load model
+    # Note: Complex models like fr3 may be too large for WASM memory
+    # Use simpler models for web visualization
+    import os
+    
+    # Choose which model to load:
+    # Option 1: Simple sphere (works well)
+    # full_path = os.path.abspath('assets/sample_scene.xml')
+    
+    # Option 2: FR3 robot arm (more complex, needs mesh files)
+    # IMPORTANT: Use absolute path so mesh files can be found
+    xml_path = 'mujoco_wasm/assets/fr3_description/mjcf/fr3_with_gripper.xml'
+    full_path = os.path.abspath(xml_path)
+    
+    m = mujoco.MjModel.from_xml_path(full_path)
+    d = mujoco.MjData(m)
+    
+    print("=" * 60)
+    print("MuJoCo Web Viewer - Passive Mode Example")
+    print("=" * 60)
+    print("\nServers will start automatically on first launch_passive() call.")
+    print("Make sure HTTP file server is running:")
+    print("  cd mujoco_wasm && python3 -m http.server 8000")
+    print("\nThen open browser at: http://localhost:8000/")
+    print(f"\nLoading model from: {full_path}")
+    print("Starting simulation...")
+    print("Press Ctrl+C to stop.\n")
+    
+    # Launch passive viewer (similar to mujoco.viewer.launch_passive)
+    # Pass full_path so we can find mesh files in the same directory
+    with launch_passive(m, d, model_path=full_path) as viewer:
+        start_time = time.time()
+        step_count = 0
+        
+        while viewer.is_running():
+            step_start = time.time()
+            
+            # Set control signal for joint 2 to follow sine wave
+            # Using position control via actuator
+            target_pos = 0.5 * np.sin(0.5 * d.time)
+            d.ctrl[1] = target_pos  # Control actuator 1 (fr3_joint2)
+            d.ctrl[3] = -target_pos*2 + 0.5
+            # Step the physics
+            mujoco.mj_step(m, d)
+            step_count += 1
+            
+            # Sync with viewer to update visualization
+            viewer.sync()
+            
+            # Print status every 60 steps (roughly once per second at 60Hz)
+            if step_count % 60 == 0:
+                elapsed = time.time() - start_time
+                sim_fps = step_count / elapsed if elapsed > 0 else 0
+                print(f"Sim time: {d.time:.2f}s | Steps: {step_count} | Sim FPS: {sim_fps:.1f}")
+            
+            # Maintain real-time rate
+            time_until_next_step = m.opt.timestep - (time.time() - step_start)
+            if time_until_next_step > 0:
+                time.sleep(time_until_next_step)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nSimulation stopped by user.")
+    except Exception as e:
+        print(f"\n\nError: {e}")
+        print("\nMake sure the WebSocket server is running:")
+        print("  python3 websocket_server.py")
