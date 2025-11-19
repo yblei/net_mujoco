@@ -221,5 +221,5 @@ let demo = new MuJoCoDemo();
 await demo.init();
 
 // Expose to window for WebSocket client
-window.mujocoDemo = demo
+window.mujocoDemo = demo;
 window.mujoco = mujoco;

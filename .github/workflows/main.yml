@@ -56,13 +56,20 @@ jobs:
       - name: Pre-Process Site
         working-directory: ./mujoco_wasm
         run: |
-          sed -e 's/\/src\//\/build\//g' index.html > index.html.tmp
+          sed -e 's/\/src\//\/build\//g' -e 's/\.\/src\//\.\/build\//g' index.html > index.html.tmp
           mv index.html.tmp index.html
           mkdir -p build
 
       - name: Run esbuild
         working-directory: ./mujoco_wasm
         run: npm run build
+
+      - name: Copy node_modules for runtime dependencies
+        working-directory: ./mujoco_wasm
+        run: |
+          mkdir -p build/node_modules
+          cp -r node_modules/mujoco-js build/node_modules/
+          cp -r node_modules/three build/node_modules/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
