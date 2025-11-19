@@ -24,7 +24,7 @@ def main():
     
     # Option 2: FR3 robot arm (more complex, needs mesh files)
     # IMPORTANT: Use absolute path so mesh files can be found
-    xml_path = 'mujoco_wasm/assets/fr3_description/mjcf/fr3_with_gripper.xml'
+    xml_path = 'assets/sample_scene.xml'
     full_path = os.path.abspath(xml_path)
     
     m = mujoco.MjModel.from_xml_path(full_path)
@@ -50,11 +50,10 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             
-            # Set control signal for joint 2 to follow sine wave
-            # Using position control via actuator
-            target_pos = 0.5 * np.sin(0.5 * d.time)
-            d.ctrl[1] = target_pos  # Control actuator 1 (fr3_joint2)
-            d.ctrl[3] = -target_pos*2 + 0.5
+            # Set joint position directly (no actuators in simple scene)
+            if m.nq > 0:
+                d.qpos[0] = 3 * np.sin(1 * d.time)
+            
             # Step the physics
             mujoco.mj_step(m, d)
             step_count += 1
