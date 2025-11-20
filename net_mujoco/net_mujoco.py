@@ -57,7 +57,7 @@ class PassiveWebViewer:
         self.model = model
         self.data = data
         self.server_url = server_url
-        self.model_path = model_path
+        self.model_source = model_path
         self._running = True
         self._initial_sync_done = False
         self._last_sync_time = 0
@@ -129,7 +129,7 @@ class PassiveWebViewer:
         except Exception:
             pass  # Silently fail if viewer not connected
     
-    def _prepare_model_files(self):
+    def _prepare_model_files_xml(self):
         """
         Prepare model by creating a zip containing XML and all mesh files.
         Uses mj_saveLastXML to resolve all includes and flatten the model.
@@ -138,6 +138,7 @@ class PassiveWebViewer:
         # Save the compiled model to XML (flattens all includes)
         temp_xml = Path(tempfile.mktemp(suffix='.xml'))
         mujoco.mj_saveLastXML(str(temp_xml), self.model)
+        #raise NotImplementedError("the above fails if we create the whole thing from mjspec. Need to fix this tomorrow ...")
         
         # Parse to find mesh files
         tree = ET.parse(str(temp_xml))
@@ -146,12 +147,12 @@ class PassiveWebViewer:
         # Get original XML directory for finding mesh files
         xml_dir = None
         print(f"   model.modelfiledir: {getattr(self.model, 'modelfiledir', 'N/A')}")
-        print(f"   self.model_path: {self.model_path}")
+        print(f"   self.model_path: {self.model_source}")
         
         if hasattr(self.model, 'modelfiledir') and self.model.modelfiledir:
             xml_dir = Path(self.model.modelfiledir)
-        elif self.model_path and Path(self.model_path).exists():
-            xml_dir = Path(self.model_path).resolve().parent
+        elif self.model_source and Path(self.model_source).exists():
+            xml_dir = Path(self.model_source).resolve().parent
         
         print(f"   XML directory: {xml_dir}")
         
@@ -216,18 +217,93 @@ class PassiveWebViewer:
         
         return zip_base64
     
+    def _prepare_model_files_mjspec(self):
+        """
+        Prepare model from mujoco.MjSpec by creating a zip containing XML and all mesh files.
+        Returns base64-encoded zip file.
+        """
+        # Create temporary directory to save model files
+
+        assert isinstance(self.model_source, mujoco.MjSpec)
+        temp_dir = Path(tempfile.mkdtemp())
+        
+        try:
+            # Save MjSpec to XML and assets
+            xml_path = temp_dir / 'model.xml'
+            self.model_source.to_file(str(xml_path))
+            
+            # Parse XML to find mesh files
+            tree = ET.parse(str(xml_path))
+            root = tree.getroot()
+            
+            # Collect all mesh file paths
+            mesh_paths = {}
+            mesh_elements = root.findall('.//mesh[@file]')
+            print(f"   Found {len(mesh_elements)} mesh references in XML")
+
+            asset_dir = Path(self.model_source.modelfiledir) / Path(self.model_source.meshdir)
+
+            for mesh in mesh_elements:
+                mesh_file = mesh.attrib['file']
+                full_path = asset_dir / mesh_file
+                
+                if full_path.exists():
+                    mesh_paths[Path(mesh_file).name] = full_path
+                    print(f"     ✓ Found: {mesh_file}")
+            
+            # Remove meshdir and adjust all paths to flat structure
+            compiler = root.find('compiler')
+            if compiler is not None and 'meshdir' in compiler.attrib:
+                del compiler.attrib['meshdir']
+            
+            for mesh in root.findall('.//mesh[@file]'):
+                orig_file = mesh.attrib['file']
+                mesh.attrib['file'] = Path(orig_file).name
+            
+            # Generate final XML string with adjusted paths
+            xml_content = ET.tostring(root, encoding='unicode')
+            
+            # Create zip file in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # Add XML file
+                zf.writestr('model.xml', xml_content)
+                
+                # Add all mesh files
+                for mesh_name, mesh_path in mesh_paths.items():
+                    with open(mesh_path, 'rb') as f:
+                        zf.writestr(mesh_name, f.read())
+            
+            # Base64 encode the zip
+            zip_buffer.seek(0)
+            zip_base64 = base64.b64encode(zip_buffer.read()).decode('utf-8')
+            
+            print(f"   Created zip with XML and {len(mesh_paths)} mesh files")
+            print(f"   Zip size: {len(zip_base64)} bytes (base64)")
+
+        except Exception as e:
+            raise e
+        
+        return zip_base64
+
     def _send_initial_model(self):
         """Send the initial model as a zip file to the browser."""
         print(f"📤 Preparing model package...")
         
         # Create zip package with XML and all meshes
-        zip_data = self._prepare_model_files()
+        if type(self.model_source) is str or self.model_source is None:
+            zip_data = self._prepare_model_files_xml()
+
+        elif isinstance(self.model_source, mujoco.MjSpec):
+            zip_data = self._prepare_model_files_mjspec()
+
+        else:
+            raise ValueError("model_source must be a string path or mujoco.MjSpec")
         
         model_data = {
             'type': 'model_zip',
             'zip_data': zip_data
         }
-        
         # Cache the model data for new browser connections
         PassiveWebViewer._cached_model_data = model_data
         
@@ -272,7 +348,7 @@ class PassiveWebViewer:
         print("=" * 60)
         print("WebSocket: ws://localhost:9000")
         print("HTTP API:  http://localhost:9001")
-        print("Open browser at: http://localhost:8000/")
+        print("Open browser at: http://yblei.github.io/net_mujoco/")
         print("=" * 60)
     
     async def _run_servers(self):
@@ -369,7 +445,7 @@ class PassiveWebViewer:
 
 def launch_passive(model: mujoco.MjModel,
                    data: mujoco.MjData,
-                   model_path: str = None,
+                   model_source: mujoco.MjSpec | str = None,
                    start_servers: bool = True,
                    open_browser: bool = True) -> PassiveWebViewer:
     """
@@ -382,7 +458,7 @@ def launch_passive(model: mujoco.MjModel,
     Args:
         model: MuJoCo model instance
         data: MuJoCo data instance
-        model_path: Original XML file path (for models with mesh assets)
+        model_source: Original XML file path (for models with mesh assets) ---------------------------------------------------------------------------------------------------------
         start_servers: If True (default), auto-starts servers. Set False
                       if you're running external websocket_server.py
         open_browser: If True (default), opens the web viewer in the default browser
@@ -404,7 +480,7 @@ def launch_passive(model: mujoco.MjModel,
     viewer = PassiveWebViewer(
         model, data,
         server_url="http://localhost:9001",
-        model_path=model_path,
+        model_path=model_source,
         start_servers=start_servers
     )
     if open_browser:

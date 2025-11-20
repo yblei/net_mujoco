@@ -27,23 +27,22 @@ def main():
     xml_path = 'assets/sample_scene.xml'
     full_path = os.path.abspath(xml_path)
     
-    m = mujoco.MjModel.from_xml_path(full_path)
+    #m = mujoco.MjModel.from_xml_path(full_path)
+    mjspec = mujoco.MjSpec.from_file(full_path)
+    m = mjspec.compile()
     d = mujoco.MjData(m)
     
     print("=" * 60)
     print("MuJoCo Web Viewer - Passive Mode Example")
     print("=" * 60)
-    print("\nServers will start automatically on first launch_passive() call.")
-    print("Make sure HTTP file server is running:")
-    print("  cd mujoco_wasm && python3 -m http.server 8000")
-    print("\nThen open browser at: http://localhost:8000/")
+    print("\nThen open browser at: http://yblei.github.io/net_mujoco/")
     print(f"\nLoading model from: {full_path}")
     print("Starting simulation...")
     print("Press Ctrl+C to stop.\n")
     
     # Launch passive viewer (similar to mujoco.viewer.launch_passive)
     # Pass full_path so we can find mesh files in the same directory
-    with launch_passive(m, d, model_path=full_path, open_browser=True) as viewer:
+    with launch_passive(m, d, model_source=mjspec, open_browser=True) as viewer:
         start_time = time.time()
         step_count = 0
         
@@ -78,7 +77,3 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print("\n\nSimulation stopped by user.")
-    except Exception as e:
-        print(f"\n\nError: {e}")
-        print("\nMake sure the WebSocket server is running:")
-        print("  python3 websocket_server.py")
