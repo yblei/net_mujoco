@@ -1,6 +1,8 @@
 MUJOCO_LOG.TXT
 __pycache__/
 *.egg-info/
+.venv
+
 
 # Compiled Object files
 **/.DS_Store
