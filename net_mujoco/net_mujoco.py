@@ -309,7 +309,7 @@ class PassiveWebViewer:
         
         async def send_model():
             try:
-                print(f"   Posting to {self.server_url}/send_model...")
+                #print(f"   Posting to {self.server_url}/send_model...")
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
                         f"{self.server_url}/send_model",
@@ -347,7 +347,7 @@ class PassiveWebViewer:
         print("MuJoCo Web Viewer - Servers Started")
         print("=" * 60)
         print("WebSocket: ws://localhost:9000")
-        print("HTTP API:  http://localhost:9001")
+        #print("HTTP API:  http://localhost:9001")
         print("Open browser at: http://yblei.github.io/net_mujoco/")
         print("=" * 60)
     
