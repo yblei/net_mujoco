@@ -10,6 +10,7 @@ dependencies = [
   "mujoco",
   "python-xlib",
   "typer",
+  "websockets",
 ]
 
 [project.scripts]
