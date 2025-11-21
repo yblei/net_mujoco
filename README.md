@@ -14,9 +14,7 @@ pip install git+https://github.com/yblei/net_mujoco.git
 ```
 
 
-### [2. Open the Web View Here](https://zalo.github.io/mujoco_wasm/)
-
-### 3. Intagrate into your code
+### 2. Integrate into your code
 
 Replace your standard MuJoCo passive viewer with the network viewer:
 
@@ -29,7 +27,7 @@ full_path = "path/to/your/model.xml"
 model = mujoco.MjModel.from_xml_path(full_path)
 data = mujoco.MjData(model)
 
-# Launch the network viewer (opens browser automatically)
+# Launch the network viewer (opens browser automatically at localhost:9001)
 with launch_passive(m, d, model_path=full_path) as viewer:
     # Your simulation loop
     while True:
@@ -39,20 +37,17 @@ with launch_passive(m, d, model_path=full_path) as viewer:
 
 ## How It Works
 
-1. **Python side**: `launch_passive()` starts a WebSocket server and sends your model to the browser.
-2. **Browser side**: MuJoCo WASM loads and renders the model using Three.js
-3. **Real-time sync**: Simulation state updates stream from Python to browser
+1. **Python side**: `launch_passive()` starts a local HTTP server with WebSocket support and serves the frontend
+2. **Browser side**: Frontend loads at `http://localhost:9001/` and connects to WebSocket at `/ws`
+3. **Real-time sync**: Simulation state updates stream from Python to browser via WebSocket
 
 ## Development
 
 ### Local Testing
 
 ```bash
-# Start local HTTP server
-cd mujoco_wasm
-python -m http.server
-
-# In another terminal, run your simulation
+# The frontend is now served automatically by the Python server
+# Just run your simulation
 python launch_passive_demo.py
 ```
 

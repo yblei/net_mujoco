@@ -35,7 +35,6 @@ def main():
     print("=" * 60)
     print("MuJoCo Web Viewer - Passive Mode Example")
     print("=" * 60)
-    print("\nThen open browser at: http://yblei.github.io/net_mujoco/")
     print(f"\nLoading model from: {full_path}")
     print("Starting simulation...")
     print("Press Ctrl+C to stop.\n")
@@ -73,7 +72,13 @@ def main():
 
 
 if __name__ == '__main__':
+    from threading import Thread
+    
     try:
+        # launch main in a separate thread to allow KeyboardInterrupt
+        #t = Thread(target=main)
+        #t.start()
+        #t.join()
         main()
     except KeyboardInterrupt:
         print("\n\nSimulation stopped by user.")

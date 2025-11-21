@@ -45,7 +45,9 @@
 
                 console.log('Connecting to WebSocket server...');
                 
-                ws = new WebSocket('ws://localhost:9000');
+                // Connect to WebSocket on same host at /ws path
+                const wsUrl = `ws://${window.location.host}/ws`;
+                ws = new WebSocket(wsUrl);
                 
                 ws.onopen = () => {
                     console.log('✓ Connected to Python WebSocket server');

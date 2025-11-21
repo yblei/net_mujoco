@@ -19,7 +19,6 @@ import os
 import zipfile
 import base64
 import io
-import websockets
 import json
 import threading
 from aiohttp import web
@@ -70,22 +69,7 @@ class PassiveWebViewer:
         
         # Register as current viewer
         PassiveWebViewer._current_viewer = self
-        
-    async def _send_update(self, state_data: dict):
-        """Send state update to the browser via HTTP API."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.server_url}/update_state",
-                    json=state_data,
-                    headers={'Content-Type': 'application/json'},
-                    timeout=aiohttp.ClientTimeout(total=1.0)
-                ) as response:
-                    return response.status == 200
-        except Exception as e:
-            # Silently fail - viewer might not be connected
-            return False
-    
+
     def sync(self, state_only: bool = True):
         """
         Synchronize the viewer with the current physics state.
@@ -120,14 +104,21 @@ class PassiveWebViewer:
             'qvel': self.data.qvel.tolist() if not state_only else None,
         }
 
-        # Send synchronously
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._send_update(state_data))
-            loop.close()
-        except Exception:
-            pass  # Silently fail if viewer not connected
+        # Send directly to WebSocket clients
+        if PassiveWebViewer._clients:
+            async def send_to_clients():
+                message = json.dumps(state_data)
+                await asyncio.gather(
+                    *[c.send_str(message) for c in PassiveWebViewer._clients],
+                    return_exceptions=True
+                )
+            
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(send_to_clients())
+                loop.close()
+            except Exception:
+                pass  # Silently fail if viewer not connected
     
     def _prepare_model_files_xml(self):
         """
@@ -307,29 +298,24 @@ class PassiveWebViewer:
         # Cache the model data for new browser connections
         PassiveWebViewer._cached_model_data = model_data
         
-        async def send_model():
+        # Send directly to connected WebSocket clients
+        if PassiveWebViewer._clients:
+            async def send_to_clients():
+                message = json.dumps(model_data)
+                await asyncio.gather(
+                    *[c.send_str(message) for c in PassiveWebViewer._clients],
+                    return_exceptions=True
+                )
+                print(f"   Model sent to {len(PassiveWebViewer._clients)} clients")
+            
+            # Create new event loop to avoid conflicts with server thread
+            loop = asyncio.new_event_loop()
             try:
-                #print(f"   Posting to {self.server_url}/send_model...")
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{self.server_url}/send_model",
-                        json=model_data,
-                        headers={'Content-Type': 'application/json'}
-                    ) as response:
-                        success = response.status == 200
-                        msg = 'success' if success else 'failed'
-                        print(f"   Server response: {response.status} ({msg})")
-                        return success
-            except Exception as e:
-                print(f"   ❌ Error sending model: {e}")
-                return False
-        
-        # Create new event loop to avoid conflicts with server thread
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(send_model())
-        finally:
-            loop.close()
+                loop.run_until_complete(send_to_clients())
+            finally:
+                loop.close()
+        else:
+            print("   No clients connected, model cached for future connections")
     
     def _start_background_servers(self):
         """Start WebSocket and HTTP servers in background thread."""
@@ -343,36 +329,43 @@ class PassiveWebViewer:
         )
         PassiveWebViewer._server_thread.start()
         PassiveWebViewer._server_started = True
-        print("=" * 60)
-        print("MuJoCo Web Viewer - Servers Started")
-        print("=" * 60)
-        print("WebSocket: ws://localhost:9000")
-        #print("HTTP API:  http://localhost:9001")
-        print("Open browser at: http://yblei.github.io/net_mujoco/")
-        print("=" * 60)
     
     async def _run_servers(self):
-        """Run WebSocket and HTTP servers."""
-        # WebSocket handler
-        async def ws_handler(websocket):
-            PassiveWebViewer._clients.add(websocket)
+        """Run combined HTTP server with WebSocket and static file serving."""
+        
+        # WebSocket handler for /ws endpoint
+        async def websocket_handler(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            
+            PassiveWebViewer._clients.add(ws)
             print(f"✓ Browser connected ({len(PassiveWebViewer._clients)} total)")
             
             # Send cached model to new client if available
             if PassiveWebViewer._cached_model_data:
                 try:
                     message = json.dumps(PassiveWebViewer._cached_model_data)
-                    await websocket.send(message)
+                    await ws.send_str(message)
                     print(f"   Sent cached model to new client")
                 except Exception as e:
                     print(f"   Failed to send cached model: {e}")
             
             try:
-                async for _ in websocket:
-                    pass
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        # Handle incoming messages if needed
+                        pass
+                    elif msg.type == aiohttp.WSMsgType.ERROR:
+                        print(f'WebSocket error: {ws.exception()}')
+                        break
+            except Exception as e:
+                print(f"WebSocket error: {e}")
             finally:
-                PassiveWebViewer._clients.remove(websocket)
+                if ws in PassiveWebViewer._clients:
+                    PassiveWebViewer._clients.remove(ws)
                 print(f"✗ Browser disconnected ({len(PassiveWebViewer._clients)} total)")
+            
+            return ws
         
         # HTTP handlers
         async def http_send_model(request):
@@ -382,7 +375,7 @@ class PassiveWebViewer:
                     message = json.dumps(data)
                     if PassiveWebViewer._clients:
                         await asyncio.gather(
-                            *[c.send(message) for c in PassiveWebViewer._clients],
+                            *[c.send_str(message) for c in PassiveWebViewer._clients],
                             return_exceptions=True
                         )
                     return web.json_response({
@@ -399,7 +392,7 @@ class PassiveWebViewer:
                 if PassiveWebViewer._clients:
                     message = json.dumps(state_data)
                     await asyncio.gather(
-                        *[c.send(message) for c in PassiveWebViewer._clients],
+                        *[c.send_str(message) for c in PassiveWebViewer._clients],
                         return_exceptions=True
                     )
                 return web.json_response({
@@ -409,17 +402,55 @@ class PassiveWebViewer:
             except Exception as e:
                 return web.json_response({'error': str(e)}, status=500)
         
-        # Start WebSocket server
-        ws_server = await websockets.serve(ws_handler, "localhost", 9000)
+        # Get the path to the mujoco_wasm directory
+        current_dir = Path(__file__).parent.parent
+        static_dir = current_dir / 'mujoco_wasm'
+        print(f"Static directory: {static_dir}")
+        print(f"Static directory exists: {static_dir.exists()}")
+        if static_dir.exists():
+            print(f"Static directory contents: {list(static_dir.iterdir())}")
         
-        # Start HTTP server
+        # Create HTTP server with static file serving
         app = web.Application(client_max_size=20*1024*1024)
+        
+        # Add WebSocket endpoint
+        app.router.add_get('/ws', websocket_handler)
+        
+        # Add API endpoints
         app.router.add_post('/send_model', http_send_model)
         app.router.add_post('/update_state', http_update_state)
+        
+        # Add static file serving for the frontend assets
+        app.router.add_static('/assets', static_dir / 'assets', name='assets')
+        app.router.add_static('/node_modules', static_dir / 'node_modules', name='node_modules')
+        app.router.add_static('/src', static_dir / 'src', name='src')
+        
+        # Add index route to serve index.html at root
+        async def serve_index(request):
+            return web.FileResponse(static_dir / 'index.html')
+        
+        # Add specific file routes
+        async def serve_static_file(request):
+            filename = request.match_info['filename']
+            file_path = static_dir / filename
+            if file_path.exists() and file_path.is_file():
+                return web.FileResponse(file_path)
+            raise web.HTTPNotFound()
+        
+        app.router.add_get('/', serve_index)
+        app.router.add_get('/{filename}', serve_static_file)
+        
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, 'localhost', 9001)
+        site = web.TCPSite(runner, '0.0.0.0', 9001)
         await site.start()
+        
+        print("=" * 60)
+        print("MuJoCo Web Viewer - Server Started")
+        print("=" * 60)
+        print("Frontend:  http://0.0.0.0:9001/ (access via port forward)")
+        print("WebSocket: ws://0.0.0.0:9001/ws")
+        print("=" * 60)
         
         # Keep running
         await asyncio.Future()
@@ -485,5 +516,5 @@ def launch_passive(model: mujoco.MjModel,
     )
     if open_browser:
         import webbrowser
-        webbrowser.open("http://yblei.github.io/net_mujoco/")
+        webbrowser.open("http://localhost:9001/")
     return viewer
