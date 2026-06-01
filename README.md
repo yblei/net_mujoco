@@ -10,7 +10,7 @@ A web-based visualization tool for MuJoCo physics simulations. View and control 
 
 ### 1. In your venv, install this project:
 ```bash
-pip install git+https://github.com/yblei/net_mujoco.git
+pip install https://github.com/yblei/net_mujoco/releases/latest/download/net_mujoco-0.0.1-py3-none-any.whl
 ```
 
 
