@@ -61,6 +61,13 @@ npm install
 npm run build
 ```
 
+### Make a Release
+
+```bash
+pip install build 
+python -m build
+```
+
 
 ## License
 
