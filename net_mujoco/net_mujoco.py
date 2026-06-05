@@ -402,9 +402,12 @@ class PassiveWebViewer:
             except Exception as e:
                 return web.json_response({'error': str(e)}, status=500)
         
-        # Get the path to the mujoco_wasm directory
-        current_dir = Path(__file__).parent.parent
-        static_dir = current_dir / 'mujoco_wasm'
+        # Frontend assets are packaged inside the Python package.
+        package_dir = Path(__file__).resolve().parent
+        static_dir = package_dir / 'mujoco_wasm'
+        if not static_dir.exists():
+            raise FileNotFoundError(f"MuJoCo frontend assets not found at {static_dir}")
+
         print(f"Static directory: {static_dir}")
         print(f"Static directory exists: {static_dir.exists()}")
         if static_dir.exists():

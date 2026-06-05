@@ -10,6 +10,7 @@ import time
 import mujoco
 from net_mujoco import launch_passive
 import numpy as np
+from pathlib import Path
 
 
 def main():
@@ -24,18 +25,18 @@ def main():
     
     # Option 2: FR3 robot arm (more complex, needs mesh files)
     # IMPORTANT: Use absolute path so mesh files can be found
-    xml_path = 'assets/sample_scene.xml'
-    full_path = os.path.abspath(xml_path)
+    xml_path = Path(__file__).parent / "assets" / "sample_scene.xml"
+    xml_path = xml_path.resolve()  # Get absolute path
     
     #m = mujoco.MjModel.from_xml_path(full_path)
-    mjspec = mujoco.MjSpec.from_file(full_path)
+    mjspec = mujoco.MjSpec.from_file(str(xml_path))
     m = mjspec.compile()
     d = mujoco.MjData(m)
     
     print("=" * 60)
     print("MuJoCo Web Viewer - Passive Mode Example")
     print("=" * 60)
-    print(f"\nLoading model from: {full_path}")
+    print(f"\nLoading model from: {xml_path}")
     print("Starting simulation...")
     print("Press Ctrl+C to stop.\n")
     

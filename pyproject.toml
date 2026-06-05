@@ -11,6 +11,7 @@ dependencies = [
   "python-xlib",
   "typer",
   "websockets",
+  "aiohttp",
 ]
 
 [project.scripts]
@@ -18,3 +19,4 @@ net-mujoco-server = "net_mujoco.server:app"
 
 [tool.setuptools]
 packages = ["net_mujoco"]
+include-package-data = true
