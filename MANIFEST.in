@@ -1,0 +1,1 @@
+recursive-include net_mujoco/mujoco_wasm *

@@ -53,19 +53,16 @@ python launch_passive_demo.py
 
 ### Building
 
-The project uses esbuild to bundle JavaScript dependencies:
+Install the frontend dependencies and build the wasm bundle with:
 
 ```bash
-cd mujoco_wasm
-npm install
-npm run build
+make install_npm
 ```
 
 ### Make a Release
 
 ```bash
-pip install build 
-python -m build
+make build_wheel
 ```
 
 

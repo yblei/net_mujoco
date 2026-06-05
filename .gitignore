@@ -41,7 +41,6 @@ __pycache__/
 **/install_manifest.txt
 **/CMakeFiles/
 **/CTestTestfile.cmake
-**/Makefile
 **/*.cbp
 **/CMakeScripts
 **/compile_commands.json
