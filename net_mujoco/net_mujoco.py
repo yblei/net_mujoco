@@ -38,6 +38,7 @@ class PassiveWebViewer:
     _clients = set()
     _current_viewer = None
     _cached_model_data = None
+    _server_exception = None
     
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData,
                  server_url: str = "http://localhost:9001",
@@ -81,6 +82,8 @@ class PassiveWebViewer:
             state_only: If True, only sync state data.
                        If False, sync everything including model changes.
         """
+        self._raise_if_server_failed()
+
         if not self._running:
             return
 
@@ -322,13 +325,33 @@ class PassiveWebViewer:
         def run_servers():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._run_servers())
+            try:
+                loop.run_until_complete(self._run_servers())
+            except Exception as exc:
+                PassiveWebViewer._server_exception = exc
+                self._running = False
+                PassiveWebViewer._server_started = False
+                print(f"Server stopped: {exc}")
+            finally:
+                self._running = False
+                try:
+                    loop.close()
+                except Exception:
+                    pass
         
         PassiveWebViewer._server_thread = threading.Thread(
             target=run_servers, daemon=True
         )
+        PassiveWebViewer._server_exception = None
         PassiveWebViewer._server_thread.start()
         PassiveWebViewer._server_started = True
+
+    def _raise_if_server_failed(self):
+        """Raise the background server failure from the main thread."""
+        server_exception = PassiveWebViewer._server_exception
+        if server_exception is not None:
+            self._running = False
+            raise RuntimeError("MuJoCo web viewer server failed") from server_exception
     
     async def _run_servers(self):
         """Run combined HTTP server with WebSocket and static file serving."""
@@ -466,7 +489,18 @@ class PassiveWebViewer:
     
     def is_running(self) -> bool:
         """Check if the viewer is still running."""
-        return self._running
+        self._raise_if_server_failed()
+
+        if not self._running:
+            return False
+
+        if self._start_servers:
+            server_thread = PassiveWebViewer._server_thread
+            if server_thread is not None and not server_thread.is_alive():
+                self._running = False
+                return False
+
+        return True
     
     def __enter__(self):
         """Context manager entry."""
